@@ -1,0 +1,6 @@
+{
+  "name": "AegisAgent C2",
+  "description": "Futuristic security terminal, threat simulator, and interactive AI guardrail firewall for Agentic Systems.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

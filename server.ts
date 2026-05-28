@@ -303,42 +303,120 @@ Evaluate this query and output a JSON.
 
 // Integrated Vite Dev Mode & production asset hosting
 const initServer = async () => {
-  const distPath = path.join(process.cwd(), "dist");
-  const hasBuild = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, "index.html"));
-  const useDevMode = process.env.NODE_ENV !== "production" || !hasBuild;
+  // Bind to port first to ensure the socket is open and we don't trigger proxy 404/502 errors
+  const serverListener = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Aegis Boot] Port listening initiated on http://0.0.0.0:${PORT}`);
+  });
 
-  if (useDevMode) {
-    console.log(`Starting server in Development/Vite Fallback Mode (hasBuild: ${hasBuild})...`);
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  try {
+    const distPath = path.join(process.cwd(), "dist");
+    const hasBuild = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, "index.html"));
+    const useDevMode = process.env.NODE_ENV !== "production" || !hasBuild;
 
-    // Serve index.html with Vite's transform to support development hot reload/ESM imports
-    app.get("*", async (req, res, next) => {
-      const url = req.originalUrl;
-      try {
-        const templatePath = path.resolve(process.cwd(), "index.html");
-        let template = fs.readFileSync(templatePath, "utf-8");
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ "Content-Type": "text/html" }).end(template);
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
-  } else {
-    console.log("Starting server in Production Mode...");
-    app.use(express.static(distPath));
+    if (useDevMode) {
+      console.log(`[Aegis Boot] Launching server in Development/Vite Fallback Mode (hasBuild: ${hasBuild})...`);
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+
+      // Serve index.html with Vite's transform to support development hot reload/ESM imports
+      app.get("*", async (req, res, next) => {
+        const url = req.originalUrl;
+        try {
+          const templatePath = path.resolve(process.cwd(), "index.html");
+          let template = fs.readFileSync(templatePath, "utf-8");
+          template = await vite.transformIndexHtml(url, template);
+          res.status(200).set({ "Content-Type": "text/html" }).end(template);
+        } catch (e) {
+          vite.ssrFixStacktrace(e as Error);
+          next(e);
+        }
+      });
+    } else {
+      console.log("[Aegis Boot] Launching server in Standalone Production Mode...");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+  } catch (error: any) {
+    console.error("[CRITICAL BOOT ERROR] Aegis Server Core failed to start:", error);
+    
+    // Install a fallback route so the platform's nginx proxy links don't return 404/502
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Aegis Agent Security Core - Bootstrap Failure</title>
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+              background: #090d16; 
+              color: #e2e8f0; 
+              padding: 40px; 
+              line-height: 1.6;
+            }
+            .container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: #0f172a;
+              border: 1px solid #1e293b;
+              border-radius: 8px;
+              padding: 30px;
+              box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            }
+            h1 { 
+              color: #f43f5e; 
+              font-size: 24px;
+              margin-top: 0;
+              border-bottom: 2px solid #334155; 
+              padding-bottom: 12px; 
+              font-weight: 700;
+              letter-spacing: -0.025em;
+            }
+            p {
+              color: #94a3b8;
+              font-size: 15px;
+            }
+            pre { 
+              background: #020617; 
+              padding: 18px; 
+              border-radius: 6px; 
+              border: 1px solid #1e293b; 
+              overflow-x: auto; 
+              color: #f1f5f9;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-size: 13px;
+              margin: 20px 0;
+            }
+            .tip {
+              background: rgba(14, 165, 233, 0.1);
+              border-left: 4px solid #0ea5e9;
+              padding: 12px 16px;
+              border-radius: 0 4px 4px 0;
+              margin-top: 20px;
+              font-size: 14px;
+              color: #38bdf8;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>🛡️ Aegis Security Core Initialization Failure</h1>
+            <p>The backend application process compiled but failed to load Vite or initialize routes during live boot:</p>
+            <pre>${error.stack || error.toString()}</pre>
+            <div class="tip font-semibold">
+              <strong>Tip:</strong> This commonly happens when required packages have not finished installing or there is a configuration mismatch. Run a fresh compilation or check the linter output.
+            </div>
+          </div>
+        </body>
+        </html>
+      `);
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`AegisAgent C2 backend online at http://0.0.0.0:${PORT} (mode: ${useDevMode ? "DEV" : "PROD"})`);
-  });
 };
 
 initServer();

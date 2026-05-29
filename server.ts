@@ -5,6 +5,14 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 
+process.on("uncaughtException", (error) => {
+  console.error("[UNCAUGHT EXCEPTION] Gracefully logging exception to prevent main thread death:", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UNHANDLED REJECTION] Gracefully logging rejection to prevent main thread death:", reason);
+});
+
 dotenv.config();
 
 const app = express();
@@ -316,7 +324,10 @@ const initServer = async () => {
     if (useDevMode) {
       console.log(`[Aegis Boot] Launching server in Development/Vite Fallback Mode (hasBuild: ${hasBuild})...`);
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: { 
+          middlewareMode: true,
+          hmr: false,
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
